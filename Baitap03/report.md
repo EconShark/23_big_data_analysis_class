@@ -14,11 +14,24 @@ header-includes:
   - \usepackage{booktabs}
   - \usepackage{longtable}
   - \usepackage{float}
+  - \usepackage{etoolbox}
+  - \usepackage{bookmark}
+  - \usepackage{fvextra}
+  - \usepackage{titlesec}
+  - \usepackage{needspace}
+  - \usepackage{fontspec}
+  - \usepackage{polyglossia}
+  - \setdefaultlanguage{vietnamese}
+  - \usepackage{fancyhdr}
+  - \usepackage{hyperref}
+  - \usepackage{pdfpages}
+  - \usepackage{etoolbox}
+  - \pretocmd{\section}{\clearpage}{}{}
 ---
 
-## MỞ ĐẦU
+# MỞ ĐẦU
 
-### 1. Bối cảnh và Mục tiêu thực hành
+## 1. Bối cảnh và Mục tiêu thực hành
 Trong các hệ thống phân tích dữ liệu kinh doanh và vận hành hiện đại, khối lượng bản ghi nhật ký giao dịch, lịch trình vận tải hoặc văn bản người dùng thường vượt quá giới hạn bộ nhớ và năng lực tính toán đơn luồng của một máy tính cá nhân. Apache Spark giải quyết bài toán này thông qua kiến trúc tính toán phân tán trong bộ nhớ (in-memory distributed computing), cho phép chia nhỏ dữ liệu trên cụm máy chủ (cluster) và thực thi song song các phép biến đổi. Thư viện `pyspark.ml` cung cấp giao diện lập trình hướng DataFrame (DataFrame-based API) giúp chuẩn hóa toàn bộ vòng đời học máy: từ đọc dữ liệu, tiền xử lý, trích xuất đặc trưng (feature engineering), đóng gói quy trình (`Pipeline`), đến huấn luyện mô hình và tinh chỉnh siêu tham số bằng kiểm định chéo (`CrossValidator`).
 
 Bài báo cáo này tài liệu hóa, kiểm chứng và phân tích chuyên sâu toàn bộ quá trình thực hiện bài tập **Máy học với PySpark** dựa trên notebook đã hoàn thành (`Machine_Learning_with_PySpark.ipynb`) và đề bài hướng dẫn (`Machine_Learning_with_PySpark.pdf`). Các mục tiêu kỹ thuật trọng tâm bao gồm:
@@ -28,22 +41,21 @@ Bài báo cáo này tài liệu hóa, kiểm chứng và phân tích chuyên sâ
 4. Xây dựng mô hình hồi quy tuyến tính (`LinearRegression`) dự báo thời gian bay (`duration`), đánh giá qua RMSE, MAE, MSE, $R^2$, đồng thời khảo sát tác động của điều chuẩn L2 (Ridge), L1 (Lasso) và Elastic Net.
 5. Thiết kế `Pipeline` học máy chuẩn mực nhằm ngăn chặn hiện tượng rò rỉ dữ liệu (data leakage) và thực hiện tìm kiếm lưới siêu tham số (`ParamGridBuilder`) kết hợp kiểm định chéo 3-fold (`CrossValidator`).
 
-### 2. Phạm vi dữ liệu
+## 2. Phạm vi dữ liệu
 Bài thực hành sử dụng hai tập dữ liệu thực tế được tải từ kho lưu trữ học phần về thư mục `/content/data`:
 - **`flights-larger.csv`**: Tập dữ liệu lịch trình và vận hành chuyến bay thương mại gồm **275.000 bản ghi** và **10 thuộc tính**, phục vụ cả bài toán phân loại chuyến bay trễ ($\text{delay} \ge 15$ phút) lẫn bài toán hồi quy dự đoán thời gian bay (`duration`).
 - **`sms.csv`**: Tập dữ liệu tin nhắn văn bản định dạng phân tách bằng dấu chấm phẩy (`;`), không có dòng tiêu đề, gồm 3 trường (`id`, `text`, `label`), phục vụ bài toán phân loại văn bản nhị phân (0 = tin nhắn thường / ham, 1 = tin nhắn rác / spam).
 
----
 
-## CHƯƠNG 1: MÔI TRƯỜNG THỰC THI, KHẢO SÁT VÀ CHUẨN BỊ DỮ LIỆU (MỤC 1 – 3)
+# CHƯƠNG 1: MÔI TRƯỜNG THỰC THI, KHẢO SÁT VÀ CHUẨN BỊ DỮ LIỆU (MỤC 1 – 3)
 
-### 1.1. Khởi tạo môi trường Apache Spark
+## 1.1. Khởi tạo môi trường Apache Spark
 Ở phần mở đầu của notebook (Cell 1–4), dữ liệu được tải về thông qua cơ chế `git sparse-checkout` chỉ lấy thư mục `Baitap03/data` để tiết kiệm băng thông. Phiên làm việc `SparkSession` được khởi tạo với cấu hình:
 - **Phiên bản PySpark / Spark:** `4.0.4`
 - **Chế độ thực thi (`master`):** `local[*]` — cho phép Spark sử dụng toàn bộ số nhân CPU khả dụng trên máy cục bộ để thực thi song song các tác vụ phân vùng (partitions).
 - **Tên ứng dụng (`appName`):** `MachineLearningWithPySpark`
 
-### 1.2. Khảo sát dữ liệu chuyến bay (`flights-larger.csv`) và Xử lý giá trị khuyết
+## 1.2. Khảo sát dữ liệu chuyến bay (`flights-larger.csv`) và Xử lý giá trị khuyết
 Tập dữ liệu `flights-larger.csv` được đọc bằng `spark.read.csv(..., header=True, inferSchema=True, nullValue="NA")` (Cell 5). Việc truyền tham số `nullValue="NA"` rất quan trọng vì trong file CSV gốc, các chuyến bay bị hủy hoặc không ghi nhận được độ trễ được ký hiệu bằng chuỗi `"NA"`; nếu không khai báo tham số này, Spark sẽ suy diễn cột `delay` thành kiểu chuỗi (`string`) thay vì số nguyên (`integer`).
 
 Kết quả kiểm tra cấu trúc (`printSchema()`) và đếm giá trị khuyết trên từng cột (Cell 8) trên tổng số **275.000 bản ghi** được tổng hợp trong Bảng 1:
@@ -74,7 +86,7 @@ Trong Cell 10, DataFrame `flights_ml` được tạo ra qua chuỗi biến đổ
    $$\text{label} = \mathbb{I}(\text{delay} \ge 15) \in \{0, 1\}$$
    Trong đó `label = 1` biểu thị chuyến bay trễ ($\ge 15$ phút) và `label = 0` biểu thị chuyến bay đúng giờ hoặc bay sớm ($\text{delay} < 15$, bao gồm cả các giá trị âm như `-19`, `-10`).
 
-### 1.3. Khảo sát dữ liệu văn bản `sms.csv` với Schema tường minh (Mục 1.3 - Cell 7)
+## 1.3. Khảo sát dữ liệu văn bản `sms.csv` với Schema tường minh (Mục 1.3 - Cell 7)
 Khác với `flights-larger.csv`, file `sms.csv` không có dòng tiêu đề (`header=False`) và sử dụng dấu chấm phẩy (`sep=";"`) làm ký tự phân cách. Thay vì dùng `inferSchema=True` (vốn tốn thêm một lượt quét toàn bộ file và có thể đoán sai kiểu dữ liệu), notebook định nghĩa tường minh `StructType` (Cell 7):
 ```python
 sms_schema = StructType([
@@ -85,7 +97,7 @@ sms_schema = StructType([
 ```
 Kết quả 5 dòng đầu cho thấy dữ liệu văn bản gốc chứa nhiều chữ hoa, chữ thường, dấu câu (`'`, `.`, `!`, `...`) và chuỗi số điện thoại/tiền thưởng (`0800 542 0578`, `1000`, `5000`), đòi hỏi phải có quy trình chuẩn hóa văn bản ở Chương 3.
 
-### 1.4. Mã hóa biến phân loại và Gom cụm vector đặc trưng (Mục 3.1 – 3.4)
+## 1.4. Mã hóa biến phân loại và Gom cụm vector đặc trưng (Mục 3.1 – 3.4)
 Các thuật toán học máy trong Spark MLlib thực hiện các phép toán đại số tuyến tính và tối ưu hóa số học nên không thể xử lý trực tiếp dữ liệu kiểu chuỗi (`carrier`, `org`). Quy trình chuyển đổi ở Mục 3 diễn ra như sau:
 1. **`StringIndexer` (Cell 14):** Ánh xạ từng nhãn chuỗi của `carrier` thành chỉ số nguyên `carrier_idx` và `org` thành `org_idx` dựa trên tần suất xuất hiện giảm dần (nhãn phổ biến nhất nhận chỉ số `0.0`, tiếp theo là `1.0`, `2.0`,...). Tham số `handleInvalid="keep"` đảm bảo nếu xuất hiện nhãn mới chưa từng thấy khi biến đổi dữ liệu test, Spark không báo lỗi dừng chương trình mà gán nhãn đó vào một bucket chỉ số phụ ở cuối.
 2. **`OneHotEncoder` (Cell 12):** Khởi tạo bộ mã hóa `onehot = OneHotEncoder(inputCols=["org_idx"], outputCols=["org_dummy"], dropLast=True)` để chuyển chỉ số phân loại thành vector nhị phân thưa (sparse vector), loại bỏ thứ tự số học giả tạo giữa các sân bay.
@@ -102,13 +114,12 @@ Các thuật toán học máy trong Spark MLlib thực hiện các phép toán �
    - Tập huấn luyện (`train_df`): **206.212 bản ghi** (tỷ lệ thực tế đạt `0.7983770117968632`, tức **79,84%**).
    - Tập kiểm tra (`test_df`): **52.077 bản ghi** (**20,16%**).
 
----
 
-## CHƯƠNG 2: PHÂN TÍCH CÁC BÀI THỰC HÀNH CỐT LÕI TRONG NOTEBOOK (MỤC 4 – 12)
+# CHƯƠNG 2: PHÂN TÍCH CÁC BÀI THỰC HÀNH CỐT LÕI TRONG NOTEBOOK (MỤC 4 – 12)
 
-### 2.1. Phân loại chuyến bay trễ bằng Decision Tree và Logistic Regression (Mục 4 & Mục 5)
+## 2.1. Phân loại chuyến bay trễ bằng Decision Tree và Logistic Regression (Mục 4 & Mục 5)
 
-#### a) Mô hình Decision Tree Classifier (Mục 4 - Cell 17 & 18)
+## a) Mô hình Decision Tree Classifier (Mục 4 - Cell 17 & 18)
 Mô hình cây quyết định được huấn luyện trên `train_df` (`seed=23`) với cấu hình `maxDepth=5` và `seed=23`.
 - **Cấu trúc cây thực tế (`toDebugString` - Cell 18):** Mô hình thu được (`uid=DecisionTreeClassifier_b203aef5b506`) có độ sâu `depth=5`, tổng cộng `numNodes=43` nút, phân loại `numClasses=2` lớp dựa trên `numFeatures=8` đặc trưng.
 - **Giải mã quy tắc phân nhánh tại nút gốc (Root Node) và các tầng đầu:**
@@ -116,7 +127,7 @@ Mô hình cây quyết định được huấn luyện trên `train_df` (`seed=2
   - Ở tầng thứ hai, cả hai nhánh đều xét `If (feature 4 in {4.0, 5.0, 6.0, 7.0})`, tức kiểm tra nhóm sân bay xuất phát (`org_idx`), sau đó kết hợp với `feature 7` (`duration` $\le 251.5$ phút), `feature 3` (`carrier_idx`), `feature 5` (`km` $\le 1050.5$ hoặc $166.0$ km) và `feature 0` (`mon` $\le 8.5$ hoặc $10.5$ — mùa thu/đông cuối năm).
 - **Nhận xét về kết quả dự đoán và thiếu sót trong Cell 17:** Bảng kết quả 10 dòng đầu trên `test_df` cho thấy với độ sâu nông (`maxDepth=5`), nhiều bản ghi rơi vào cùng một nút lá nên nhận cùng vector xác suất `probability` (ví dụ `[0.6225186, 0.3774814]` dự đoán `0.0`, hoặc `[0.3195589, 0.6804411]` dự đoán `1.0`). *Lưu ý kiểm toán:* Trong Mục 4 của notebook, sinh viên chỉ in 10 dòng dự đoán và cấu trúc cây mà **chưa chạy bộ đánh giá `Evaluator` cho `tree_pred`**. Việc tính toán đầy đủ Accuracy, F1-Score và AUC cho Decision Tree được bổ sung hoàn chỉnh ở Project A (Cell 52) và Bài 3 (Cell 58).
 
-#### b) Mô hình Logistic Regression và Đánh giá Classifier (Mục 5 - Cell 19, 21, 22)
+## b) Mô hình Logistic Regression và Đánh giá Classifier (Mục 5 - Cell 19, 21, 22)
 Mô hình hồi quy logistic được khởi tạo với `maxIter=50` (các tham số `regParam=0.0`, `threshold=0.5` giữ mặc định) và huấn luyện trên cùng tập `train_df` (`seed=23`). Khác với cây quyết định vốn tạo xác suất rời rạc theo từng nút lá, Logistic Regression sử dụng hàm sigmoid $\sigma(z) = \frac{1}{1 + e^{-z}}$ để ánh xạ tổ hợp tuyến tính của các đặc trưng thành xác suất liên tục trên đoạn $[0, 1]$.
 
 Kết quả thống kê Ma trận nhầm lẫn (`log_pred.groupBy("label", "prediction").count()`) tại Cell 21 trên **52.077 bản ghi** của `test_df` ghi nhận:
@@ -133,7 +144,7 @@ Từ 4 thành phần này, ta kiểm chứng trực tiếp các chỉ số đán
   - Xét riêng lớp dương tính (`label = 1` - chuyến bay trễ): $\text{Precision}_1 = \frac{16.798}{16.798 + 10.850} = 60,76\%$ và $\text{Recall}_1 = \frac{16.798}{16.798 + 9.675} = 63,45\%$.
 - **ROC-AUC (Diện tích dưới đường cong ROC):** Đạt $\mathbf{0,6456}$. Chỉ số này đo xác suất mô hình xếp hạng một chuyến bay thực sự trễ có điểm xác suất cao hơn một chuyến bay đúng giờ khi chọn ngẫu nhiên một cặp mẫu khác lớp, không phụ thuộc vào ngưỡng cắt (threshold) cố định 0,5.
 
-### 2.2. Khai phá văn bản (Text Mining) và Phân loại SMS Spam cơ bản (Mục 6 - Cell 26–32)
+## 2.2. Khai phá văn bản (Text Mining) và Phân loại SMS Spam cơ bản (Mục 6 - Cell 26–32)
 Ở Mục 6, notebook minh họa từng bước chuyển đổi văn bản phi cấu trúc thành vector số học TF-IDF:
 1. **Làm sạch văn bản (`regexp_replace` - Cell 26):** Loại bỏ các dấu câu `[_():;,.!?\-]`, xóa toàn bộ chữ số `[0-9]` (thay bằng khoảng trắng) và gộp nhiều khoảng trắng liên tiếp ` +` thành một khoảng trắng đơn. Ví dụ, câu spam số 4 `"Win a 1000 cash prize or a prize worth 5000"` được làm sạch thành `"Win a cash prize or a prize worth "`.
 2. **Tách từ (`Tokenizer` - Cell 27):** Chuyển chuỗi văn bản về chữ thường (lowercase) và tách theo khoảng trắng thành mảng các token (`tokens`).
@@ -150,7 +161,7 @@ Từ 4 thành phần này, ta kiểm chứng trực tiếp các chỉ số đán
      - Tính toán từ ma trận: $\text{Accuracy} = \frac{932 + 121}{1.096} = 96,08\%$; $\text{Precision}_{\text{spam}} = \frac{121}{121 + 4} = 96,80\%$; $\text{Recall}_{\text{spam}} = \frac{121}{121 + 39} = 75,63\%$.
    - **Chỉ số tổng hợp (Cell 32):** **SMS AUC = `0.991279`** ($\approx 0,9913$) và **SMS F1 = `0.958717`** ($\approx 0,9587$).
 
-### 2.3. Kỹ thuật tạo đặc trưng (Feature Engineering) và Phân nhóm (`Bucketizer`) (Mục 8 - Cell 39 & 40)
+## 2.3. Kỹ thuật tạo đặc trưng (Feature Engineering) và Phân nhóm (`Bucketizer`) (Mục 8 - Cell 39 & 40)
 Trước khi đi sâu vào các mô hình nâng cao, Mục 8 thực hiện hai kỹ thuật biến đổi đặc trưng quan trọng trên dữ liệu chuyến bay:
 1. **Rời rạc hóa giờ khởi hành bằng `Bucketizer` (Mục 8.1 - Cell 39):**
    Biến liên tục `depart` (giờ thập phân từ 0 đến 24) được chia thành 4 khung giờ trong ngày thông qua ngưỡng cắt `splits=[0, 6, 12, 18, 24]` với `handleInvalid="keep"`. Kết quả thống kê phân bố trên toàn bộ **275.000 chuyến bay** được trực quan hóa tại Hình 1:
@@ -167,9 +178,9 @@ Trước khi đi sâu vào các mô hình nâng cao, Mục 8 thực hiện hai k
    - `speed_km_per_min = km / duration`: Tốc độ di chuyển trung bình thực tế (km/phút, bao gồm cả thời gian lăn bánh). Quan sát output Cell 40 cho thấy các chặng ngắn (`km = 252.67`, `duration = 51`) chỉ đạt tốc độ trung bình `4.95 km/phút` (~297 km/h) do thời gian cất/hạ cánh chiếm tỷ trọng lớn, trong khi chặng bay dài xuyên lục địa (`km = 3617.80`, `duration = 365`) đạt tốc độ trung bình `9.91 km/phút` (~595 km/h).
    - `sqrt_km = sqrt(km)` và `log_km = log1p(km)` ($\ln(1 + \text{km})$): Các phép biến đổi nén thang đo giúp giảm độ lệch phải (right-skewness) của phân bố quãng đường bay.
 
-### 2.4. Hồi quy tuyến tính, Điều chuẩn (Regularization), Pipeline và Cross-Validation (Mục 7, 9, 10, 11)
+## 2.4. Hồi quy tuyến tính, Điều chuẩn (Regularization), Pipeline và Cross-Validation (Mục 7, 9, 10, 11)
 
-#### a) Mô hình Linear Regression cơ sở `duration ~ km` (Mục 7 - Cell 33, 34, 37, 38)
+## a) Mô hình Linear Regression cơ sở `duration ~ km` (Mục 7 - Cell 33, 34, 37, 38)
 Trên tập `reg_base` (lọc `duration` và `mile` khác null, giữ nguyên 275.000 dòng vì 2 cột này không có missing value), dữ liệu được chia 80/20 với `seed=42`. Mô hình hồi quy đơn biến dự đoán thời gian bay (`duration`) theo quãng đường (`km`) cho kết quả ước lượng tham số (Cell 38):
 $$\widehat{\text{duration}} = 44,232376 + 0,075756 \times \text{km}$$
 - **Giải thích ý nghĩa kinh tế - kỹ thuật của hệ số:**
@@ -181,14 +192,14 @@ $$\widehat{\text{duration}} = 44,232376 + 0,075756 \times \text{km}$$
   - **MAE (Mean Absolute Error = `13.1121` phút):** Sai số tuyệt đối trung bình, cho biết trung bình dự báo lệch khoảng $13,11$ phút so với lịch trình thực tế (ít nhạy với ngoại lai hơn RMSE).
   - **$R^2$ (Coefficient of Determination = `0.9613`):** Riêng biến quãng đường `km` đã giải thích được **96,13%** phương sai của thời gian bay `duration` trên tập kiểm tra.
 
-#### b) Điều chuẩn Ridge, Lasso và Elastic Net với biến bổ sung `org` (Mục 9 - Cell 42)
+## b) Điều chuẩn Ridge, Lasso và Elastic Net với biến bổ sung `org` (Mục 9 - Cell 42)
 Ở Cell 42, tác giả đã ghi chú rõ việc tái tạo lại DataFrame `reg_full` (do một ô trước đó bị xóa) bằng cách mã hóa thêm sân bay xuất phát `org` thành `org_dummy` (`OneHotEncoder` mặc định `dropLast=True` tạo 7 cột dummy cho 8 sân bay + 1 bucket `keep` = 8 chiều dummy, ghép với `km` thành vector `features2` có **9 hệ số**). Tập dữ liệu được chia 80/20 với `seed=23` và huấn luyện 3 mô hình ở mức `regParam = 0.1`:
 - **Ridge (`elasticNetParam = 0.0` - phạt chuẩn $L_2$):** $\text{RMSE} = \mathbf{11,289664}$ phút; `num_coefficients = 9`; `zero_coefficients = 0`.
 - **Elastic Net (`elasticNetParam = 0.5` - kết hợp $50\%\ L_1 + 50\%\ L_2$):** $\text{RMSE} = \mathbf{11,291365}$ phút; `num_coefficients = 9`; `zero_coefficients = 1` (đã triệt tiêu hoàn toàn 1 hệ số sân bay kém ý nghĩa về 0 với ngưỡng $|w| < 10^{-10}$).
 - **Lasso (`elasticNetParam = 1.0` - phạt chuẩn $L_1$):** $\text{RMSE} = \mathbf{11,294537}$ phút; `num_coefficients = 9`; `zero_coefficients = 0`.
 - *Nhận xét:* Việc đưa thêm biến sân bay xuất phát `org_dummy` vào mô hình giúp giảm mạnh sai số RMSE từ **17,15 phút** xuống còn **11,29 phút** (giảm ~34,2% sai số), bởi thời gian lăn bánh chờ cất cánh (taxi-out time) tại các siêu sân bay bận rộn như `JFK`, `ORD` hay `LGA` dài hơn hẳn các sân bay địa phương như `TUS` hay `OGG`.
 
-#### c) Kiến trúc Pipeline chống Data Leakage và Tối ưu bằng 3-Fold Cross-Validation (Mục 10 & 11 - Cell 43–47)
+## c) Kiến trúc Pipeline chống Data Leakage và Tối ưu bằng 3-Fold Cross-Validation (Mục 10 & 11 - Cell 43–47)
 Ở Mục 9 (Cell 42), `StringIndexer` và `OneHotEncoder` vẫn được `.fit()` trên toàn bộ `reg_base` trước khi gọi `randomSplit`. Sang **Mục 10 (Cell 43)**, quy trình được chuẩn hóa hoàn toàn: dữ liệu được chia trước thành `pipe_train` và `pipe_test` (`seed=13`), sau đó 4 công đoạn `[pipe_indexer, pipe_onehot, pipe_assembler, pipe_lr]` được đóng gói vào đối tượng `Pipeline`. Khi gọi `pipeline.fit(pipe_train)`, chỉ dữ liệu huấn luyện được dùng để học thứ tự tần suất nhãn và hệ số hồi quy; kết quả đánh giá trên `pipe_test` đạt **Pipeline RMSE = `11.187971`** phút.
 
 Ở **Mục 11 (Cell 45–47)**, `CrossValidator` được thiết lập với `numFolds=3`, `seed=13`, `parallelism=2` trên lưới `ParamGridBuilder` gồm $3 \times 3 = \mathbf{9}$ cấu hình: `regParam` $\in \{0.01, 0.1, 1.0\} \times$ `elasticNetParam` $\in \{0.0, 0.5, 1.0\}$.
@@ -204,7 +215,7 @@ $$\widehat{\text{duration}} = 44,232376 + 0,075756 \times \text{km}$$
   9. `regParam=1.00, elasticNetParam=1.0` (Lasso): `11.546459`
 - **Mô hình tối ưu và Hiệu năng trên tập Test (Cell 46 & 47):** Cấu hình chiến thắng là **`regParam = 0.01`** và **`elasticNetParam = 0.5`**, mang lại **Best test RMSE = `11.187946`** phút (cải thiện nhẹ so với Pipeline OLS không điều chuẩn `11.187971`). Khi `regParam` tăng lên `1.0` kết hợp Lasso (`elasticNetParam=1.0`), hệ số phạt quá lớn làm mô hình bị dưới khớp (underfitting), đẩy CV RMSE tăng lên tới `11.5465` phút.
 
-### 2.5. Mô hình Tổ hợp (Ensemble Models) trên tập đặc trưng rút gọn (Mục 12 - Cell 49 & 50)
+## 2.5. Mô hình Tổ hợp (Ensemble Models) trên tập đặc trưng rút gọn (Mục 12 - Cell 49 & 50)
 Trong Mục 12, notebook khảo sát 3 thuật toán cây (`DecisionTreeClassifier`, `RandomForestClassifier(numTrees=30)`, `GBTClassifier(maxIter=20)`) với cùng `seed=17` trên tập dữ liệu chỉ sử dụng **3 đặc trưng số học**: `["mon", "depart", "duration"]` (chia 80/20 với `seed=17`).
 - **Kết quả thực tế (Cell 50):**
   - **GBT (`maxIter=20, seed=17`):** Đứng đầu với **AUC = `0.679002`** và **F1 = `0.628652`**.
@@ -215,13 +226,12 @@ Trong Mục 12, notebook khảo sát 3 thuật toán cây (`DecisionTreeClassifi
 ![Hình 2. Đối chiếu Ma trận nhầm lẫn (Confusion Matrix) của Logistic Regression](figures/fig2_confusion_matrices.png)
 *Hình 2. Trực quan hóa Ma trận nhầm lẫn (Confusion Matrix) của Logistic Regression trong 3 kịch bản: (Trái) Mục 5.1 phân loại chuyến bay với `org_idx`; (Giữa) Bài 4 phân loại chuyến bay với `org_dummy` One-Hot; (Phải) Mục 6.3 phân loại tin nhắn SMS Spam.*
 
----
 
-## CHƯƠNG 3: BÀI TẬP MỞ RỘNG — PROJECT A VÀ PROJECT B (MỤC 4 ĐỀ BÀI)
+# CHƯƠNG 3: BÀI TẬP MỞ RỘNG — PROJECT A VÀ PROJECT B (MỤC 4 ĐỀ BÀI)
 
-### 3.1. Project A — Phân loại Chuyến bay trễ (Flight Delay Classification)
+## 3.1. Project A — Phân loại Chuyến bay trễ (Flight Delay Classification)
 
-#### a) Thiết kế Pipeline tiền xử lý và Đặc trưng đầu vào (Cell 51)
+## a) Thiết kế Pipeline tiền xử lý và Đặc trưng đầu vào (Cell 51)
 Project A tích hợp đầy đủ 8 thuộc tính dự báo gốc: `mon`, `dom`, `dow`, `carrier`, `org`, `km` (quy đổi từ `mile`), `depart` và `duration` để dự đoán nhãn nhị phân `label = (delay >= 15).cast("integer")` trên **258.289 bản ghi sạch**.
 - **Chia dữ liệu:** Tập `cleaned_flights_proj_a` được chia thành `train_proj_a` (80%) và `test_proj_a` (20%) với **`seed=42`** *trước khi* thực hiện bất kỳ phép biến đổi học tham số nào.
 - **Các công đoạn trong `preprocessing_pipeline`:**
@@ -231,7 +241,7 @@ Project A tích hợp đầy đủ 8 thuộc tính dự báo gốc: `mon`, `dom`
   4. `VectorAssembler(inputCols=["mon", "dom", "dow", "carrier_idx", "org_dummy", "km", "depart", "duration"], outputCol="features")`
 - Mỗi mô hình phân loại `clf` được nối tiếp vào sau `preprocessing_pipeline` thông qua `Pipeline(stages=[preprocessing_pipeline, clf])`, đảm bảo tính đóng gói chặt chẽ và chống rò rỉ dữ liệu tuyệt đối.
 
-#### b) Bảng tổng hợp và So sánh toàn diện các mô hình Phân loại chuyến bay
+## b) Bảng tổng hợp và So sánh toàn diện các mô hình Phân loại chuyến bay
 Bảng 2 tổng hợp toàn bộ kết quả thực nghiệm của các mô hình phân loại chuyến bay trễ đã chạy trong notebook (bao gồm Project A ở Cell 52–54, đối chiếu cùng Mục 5.2, Mục 12.1, Bài 3, Bài 4 và Bài 10):
 
 **Bảng 2. Bảng so sánh toàn diện các mô hình Phân loại chuyến bay trễ (`flights-larger.csv`)**
@@ -255,7 +265,7 @@ Bảng 2 tổng hợp toàn bộ kết quả thực nghiệm của các mô hìn
 ![Hình 3. So sánh hiệu năng các mô hình Phân loại chuyến bay trễ (Project A, Mục 12.1 & Bài 10)](figures/fig3_flight_classifiers_comparison.png)
 *Hình 3. Đối chiếu trực quan hiệu năng giữa 4 mô hình phân loại trong Project A (trái - 15 chiều đặc trưng) và 3 mô hình cây trong Mục 12.1 (phải - 3 chiều đặc trưng).*
 
-#### c) Phân tích ý nghĩa các Metric, Tinh chỉnh Cross-Validation và Lý do lựa chọn mô hình cuối cùng
+## c) Phân tích ý nghĩa các Metric, Tinh chỉnh Cross-Validation và Lý do lựa chọn mô hình cuối cùng
 1. **Đánh giá sự đánh đổi giữa các chỉ số (Metric Trade-offs):**
    - Quan sát Bảng 2 và Hình 3 (trái), một hiện tượng rất đáng chú ý xảy ra giữa **Logistic Regression** và **Decision Tree (`maxDepth=5`)**: Decision Tree đạt **Accuracy (`0.6317`)** và **F1-Score (`0.6317`)** cao hơn khoảng $2,08$ điểm phần trăm so với Logistic Regression (`0.6109` và `0.6104`), nhưng **ROC-AUC của Decision Tree lại thấp nhất (`0.5989`)**, kém xa Logistic Regression (`0.6535`).
    - *Nguyên nhân toán học:* Cây quyết định đơn với `maxDepth=5` chỉ chia không gian đặc trưng thành 21 vùng lá ($numNodes=41$), tạo ra hàm bước nhảy thô (piecewise constant probability). Nó tối ưu tốt việc gán nhãn cứng $0/1$ quanh ngưỡng mặc định $0.5$ (nên Accuracy và F1 cao), nhưng lại xếp hạng xác suất nội bộ rất kém vì hàng ngàn chuyến bay trong cùng một lá bị gán cùng một điểm xác suất. Ngược lại, Logistic Regression tạo ra dải điểm xác suất liên tục mượt mà nên có khả năng phân biệt thứ bậc rủi ro (AUC = `0.6535`) tốt hơn, nhưng do ranh giới quyết định tuyến tính không bắt kịp tương tác phi tuyến giữa giờ bay (`depart`), tháng (`mon`) và hãng bay (`carrier`), nên tỷ lệ phân loại đúng tại ngưỡng $0.5$ thấp hơn.
@@ -268,11 +278,10 @@ Bảng 2 tổng hợp toàn bộ kết quả thực nghiệm của các mô hìn
    - **Cơ chế học tăng cường tuần tự (Sequential Boosting):** Khác với Random Forest xây dựng các cây song song độc lập để giảm phương sai, GBT xây dựng tuần tự 20 cây nông (`maxDepth=5`), trong đó mỗi cây tiếp theo được huấn luyện để khớp trực tiếp với đạo hàm bậc nhất của hàm mất mát (pseudo-residuals / sai số còn sót lại) của tổ hợp các cây trước đó. Cơ chế này giúp GBT giảm mạnh độ chệch (bias) và nắm bắt chính xác các quy luật tương tác bậc cao giữa khung giờ khởi hành (`depart`), mùa vụ (`mon`), sân bay đi (`org`) và hãng vận chuyển (`carrier`).
    - **Hạn chế cần lưu ý:** Vì GBT huấn luyện tuần tự từng cây (cây thứ $m$ phải đợi cây thứ $m-1$ hoàn tất), thời gian huấn luyện của GBT trên cụm Spark dài hơn đáng kể so với Random Forest (vốn có thể huấn luyện song song 30 cây cùng lúc). Ngoài ra, nếu tăng `maxIter` quá lớn mà không kiểm soát tốc độ học (`stepSize`), GBT dễ bị quá khớp với nhiễu hơn Random Forest.
 
----
 
-### 3.2. Project B — Phân loại Tin nhắn rác (SMS Spam Classification)
+## 3.2. Project B — Phân loại Tin nhắn rác (SMS Spam Classification)
 
-#### a) Quy trình Tiền xử lý văn bản và Thiết lập Grid Search (Cell 55 & 56)
+## a) Quy trình Tiền xử lý văn bản và Thiết lập Grid Search (Cell 55 & 56)
 Trong Project B, quy trình làm sạch văn bản trên DataFrame `sms` được nâng cấp so với Mục 6 bằng cách lọc bỏ dòng null (`.filter(F.col("text").isNotNull())`), xóa dấu câu, xóa chữ số, thu gọn khoảng trắng và bổ sung bước chuyển toàn bộ văn bản về chữ thường bằng hàm `lower(F.col("text_clean"))` trước khi đưa vào `Tokenizer` và `StopWordsRemover`. Dữ liệu được chia 80/20 với **`seed=42`** (`train_proj_b`, `test_proj_b`).
 
 Để khảo sát đồng thời ảnh hưởng của kích thước không gian băm từ vựng (`numFeatures`) và cơ chế điều chuẩn của `LogisticRegression`, Cell 56 thực hiện vòng lặp vét cạn trên lưới $3 \times 3 \times 3 = \mathbf{27}$ cấu hình:
@@ -280,7 +289,7 @@ Trong Project B, quy trình làm sạch văn bản trên DataFrame `sms` đượ
 - `regParam` ($\lambda$) $\in \{0.01,\ 0.10,\ 0.20\}$
 - `elasticNetParam` ($\alpha$) $\in \{0.0\ (\text{Ridge } L_2),\ 0.5\ (\text{Elastic Net}),\ 1.0\ (\text{Lasso } L_1)\}$
 
-#### b) Bảng kết quả 10 cấu hình tốt nhất và Đối chiếu với các mô hình cơ sở
+## b) Bảng kết quả 10 cấu hình tốt nhất và Đối chiếu với các mô hình cơ sở
 Bảng 3 trình bày 10 cấu hình đạt F1-Score cao nhất từ bảng `pdf_results.head(10)` (Cell 56), đồng thời tổng hợp thống kê toàn cục của cả 27 cấu hình (trích từ metadata của DataFrame trong notebook) và đối chiếu với mô hình cơ sở ở Mục 6.3 và Bài 5:
 
 **Bảng 3. Tổng hợp kết quả phân loại SMS Spam (Top 10 cấu hình Grid Search Project B, Mục 6.3 và Bài 5)**
@@ -304,7 +313,7 @@ Bảng 3 trình bày 10 cấu hình đạt F1-Score cao nhất từ bảng `pdf_
 ![Hình 5. Kết quả Phân loại SMS Spam qua các cấu hình HashingTF & Regularization (Project B, Mục 6.3 & Bài 5)](figures/fig5_sms_grid_search.png)
 *Hình 5. So sánh F1-Score và ROC-AUC giữa 10 cấu hình tốt nhất trong Project B cùng hai mô hình cơ sở ở Mục 6.3 và Bài 5.*
 
-#### c) Giải thích kết quả thực nghiệm và Lựa chọn cấu hình tối ưu cho Project B
+## c) Giải thích kết quả thực nghiệm và Lựa chọn cấu hình tối ưu cho Project B
 1. **Sự vượt trội tuyệt đối của Điều chuẩn $L_2$ (Ridge - `elasticNetParam = 0.0`):**
    - Trong Top 10 cấu hình tốt nhất (Bảng 3), có tới **8 cấu hình sử dụng thuần điều chuẩn $L_2$ (`elasticNetParam = 0.0`)** (bao gồm toàn bộ Top 5) và 2 cấu hình sử dụng Elastic Net (`0.5`) với mức phạt nhẹ `regParam = 0.01`. Không có bất kỳ cấu hình Lasso (`elasticNetParam = 1.0`) nào lọt vào Top 10.
    - Hơn nữa, thống kê tổng hợp 27 cấu hình trong metadata của Cell 56 cho thấy khi áp dụng Lasso (`elasticNetParam = 1.0`) với `regParam` lớn (`0.1` hoặc `0.2`), toàn bộ hệ số hồi quy bị ép về $0$, khiến mô hình dự đoán mọi tin nhắn đều thuộc lớp đa số (ham, `label=0`), đẩy **AUC tụt xuống mức ngẫu nhiên `0.500000`** và **F1-Score chạm đáy `0.805827`**.
@@ -315,11 +324,10 @@ Bảng 3 trình bày 10 cấu hình đạt F1-Score cao nhất từ bảng `pdf_
 3. **Lưu ý kỹ thuật về quy trình đánh giá trong Cell 56:**
    - Trong vòng lặp Cell 56, câu lệnh `test_tfidf = idf.fit(hasher.transform(train_prepped)).transform(hasher.transform(test_prepped))` đã thực hiện đúng nguyên tắc **chỉ `.fit()` IDF trên tập `train_prepped`** rồi mới `.transform()` trên `test_prepped` (không bị rò rỉ IDF). Tuy nhiên, việc gọi lặp lại `idf.fit(hasher.transform(train_prepped))` hai lần liên tiếp cho tập train và tập test làm tốn gấp đôi chi phí tính toán không cần thiết (nên lưu `idf_model = idf.fit(...)` vào biến tạm). Ngoài ra, việc chọn cấu hình tốt nhất dựa trực tiếp trên kết quả đánh giá của `test_proj_b` thay vì dùng `CrossValidator` trên `train_proj_b` có thể dẫn đến thiên lệch lựa chọn siêu tham số trên tập test (test-set selection bias).
 
----
 
-## CHƯƠNG 4: PHÂN TÍCH CHI TIẾT CÁC BÀI TẬP THÊM (MỤC 5 ĐỀ BÀI: BÀI 1 – BÀI 10)
+# CHƯƠNG 4: PHÂN TÍCH CHI TIẾT CÁC BÀI TẬP THÊM (MỤC 5 ĐỀ BÀI: BÀI 1 – BÀI 10)
 
-### 4.1. Bài 1 & Bài 2 — Chuẩn bị dữ liệu, `StringIndexer` và `OneHotEncoder` (Cell 57)
+## 4.1. Bài 1 & Bài 2 — Chuẩn bị dữ liệu, `StringIndexer` và `OneHotEncoder` (Cell 57)
 - **Yêu cầu & Phương pháp:** Đếm giá trị thiếu trên `flights-larger.csv`, loại bỏ cột `flight`, lọc dòng thiếu `delay`, tạo biến `km` và `label`; sau đó mã hóa `carrier` và `org` bằng `StringIndexer`, mã hóa One-Hot cho `org` và ghép vector đặc trưng qua `Pipeline`.
 - **Kết quả thực thi (Cell 57):**
   - Bảng đếm missing values xác nhận 9 cột đầu có `0` giá trị khuyết, riêng cột `delay` có **`16.711`** giá trị khuyết.
@@ -332,7 +340,7 @@ Bảng 3 trình bày 10 cấu hình đạt F1-Score cao nhất từ bảng `pdf_
   1. *Bản chất định danh của biến phân loại:* Các chỉ số `0.0, 1.0, 2.0,...` do `StringIndexer` sinh ra chỉ là nhãn thứ tự tần suất. Nếu đưa trực tiếp vào phương trình tuyến tính $w \cdot x$, mô hình sẽ áp đặt một quan hệ thứ tự và khoảng cách đại số giả tạo (ví dụ: coi sân bay có chỉ số `4.0` gấp đôi sân bay `2.0`, hoặc trung bình cộng của sân bay `1.0` và `3.0` là sân bay `2.0`). `OneHotEncoder` tách mỗi sân bay thành một chiều nhị phân độc lập $\{0, 1\}$, cho phép mô hình học một trọng số riêng biệt cho từng sân bay.
   2. *Cấu trúc Sparse Vector 15 chiều:* Trong 15 vị trí chỉ số (từ `0` đến `14`), các vị trí `0, 1, 2, 3` lưu `mon, dom, dow, carrier_idx`; 8 vị trí từ `4` đến `11` lưu vector One-Hot `org_dummy` (chỉ có đúng 1 vị trí nhận giá trị `1.0`, như vị trí `4` ứng với sân bay `ORD` ở dòng 1–2, vị trí `6` ứng với `JFK` ở dòng 3); và 3 vị trí cuối `12, 13, 14` lưu `km, depart, duration`. Cách lưu trữ Sparse Vector `(kích_thước, [chỉ_số_khác_0], [giá_trị_khác_0])` giúp tiết kiệm bộ nhớ RAM cực lớn khi số lượng phạm trù lên tới hàng ngàn nhãn.
 
-### 4.2. Bài 3 — Khảo sát độ sâu Cây quyết định (`maxDepth = 3, 5, 10`) (Cell 58)
+## 4.2. Bài 3 — Khảo sát độ sâu Cây quyết định (`maxDepth = 3, 5, 10`) (Cell 58)
 - **Yêu cầu & Phương pháp:** Trên tập `flights_ready_b2` chia 80/20 với `seed=42`, huấn luyện `DecisionTreeClassifier(seed=42)` ở 3 mức độ sâu `maxDepth` $\in \{3, 5, 10\}$, so sánh Accuracy, F1, AUC và in cấu trúc `toDebugString`.
 - **Kết quả thực thi (Cell 58):**
 
@@ -351,7 +359,7 @@ Bảng 3 trình bày 10 cấu hình đạt F1-Score cao nhất từ bảng `pdf_
   1. *Giải mã cấu trúc `toDebugString`:* Khi dùng vector 15 chiều (đã One-Hot cột `org`), biến `depart` nằm ở chỉ số `feature 13` và `km` nằm ở `feature 12`. Do đó, cả 3 cây đều chọn nút gốc là `If (feature 13 <= 11.01)` (giờ khởi hành trước 11:00 sáng), tiếp theo ở nhánh trái là `If (feature 3 in {3.0, 7.0, 8.0})` (`carrier_idx`) và `If (feature 12 <= 3538.0)` (`km`).
   2. *Vì sao số nút tăng gấp 88 lần (từ 13 lên 1.143 nút) giúp Accuracy tăng nhưng làm AUC giảm?* Khi tăng `maxDepth` từ 3 lên 10, cây quyết định chia nhỏ không gian thành hàng trăm nút lá cực kỳ chi tiết (ví dụ ở `maxDepth=10` xuất hiện các nhánh cắt rất vụn như `feature 0 <= 0.5`, `feature 1 <= 2.5`, `feature 8 in {0.0}`). Nhờ đó, nhiều vùng cục bộ được gán đúng nhãn đa số hơn, kéo **Accuracy và F1-Score tăng thêm $+4,18$ điểm phần trăm** (từ `0.6213` lên `0.6630`). Tuy nhiên, các nút lá ở tầng thứ 10 chứa rất ít mẫu huấn luyện, dẫn đến ước lượng tần suất xác suất tại lá bị phương sai cao (nhiều lá bị đẩy về xác suất cực đoan $0.0$ hoặc $1.0$ do quá khớp cục bộ). Khi tính `BinaryClassificationEvaluator` (ROC-AUC) dựa trên vector `rawPrediction` (số lượng mẫu từng lớp tại lá), các ước lượng xác suất nhiễu ở cây sâu làm giảm chất lượng xếp hạng tổng thể trên tập test, khiến **AUC giảm từ `0.5994` xuống `0.5916`**.
 
-### 4.3. Bài 4 — Đánh giá chi tiết Mô hình Logistic Regression (Cell 60)
+## 4.3. Bài 4 — Đánh giá chi tiết Mô hình Logistic Regression (Cell 60)
 - **Yêu cầu & Phương pháp:** Huấn luyện `LogisticRegression(maxIter=30)` trên tập `train_b3` (vector 15 chiều có `org_dummy`, `seed=42`) và đánh giá Confusion Matrix cùng 4 chỉ số trên `test_b3`.
 - **Kết quả thực thi (Cell 60) và Đối chiếu với Mục 5.1:**
   - **Confusion Matrix (trên $N = 51.726$ mẫu test):**
@@ -366,14 +374,14 @@ Bảng 3 trình bày 10 cấu hình đạt F1-Score cao nhất từ bảng `pdf_
     - `AUC`: **`0.6535`** (`0.653452`)
 - **Nhận xét:** So với Logistic Regression ở Mục 5.2 (dùng `org_idx` dạng số nguyên liên tục, đạt F1 = `0.6055`, AUC = `0.6456`), việc mã hóa One-Hot cho sân bay xuất phát (`org_dummy`) ở Bài 4 giúp mô hình tuyến tính ước lượng đúng tác động riêng của từng sân bay, nâng **F1-Score tăng thêm $+0,49\%$** và **AUC tăng thêm $+0,79\%$** (từ `0.6456` lên `0.6535`).
 
-### 4.4. Bài 5 — Pipeline Phân loại SMS Spam (Cell 61)
+## 4.4. Bài 5 — Pipeline Phân loại SMS Spam (Cell 61)
 - **Yêu cầu & Phương pháp:** Đóng gói toàn bộ 5 bước `[Tokenizer, StopWordsRemover, HashingTF(numFeatures=1024), IDF, LogisticRegression(regParam=0.2)]` vào một đối tượng `Pipeline` duy nhất và đánh giá trên dữ liệu `sms_clean_b5` chia 80/20 với `seed=42`.
 - **Kết quả thực thi (Cell 61):**
   - **F1-Score:** **`0.9525`**
   - **AUC:** **`0.9772`**
 - **Nhận xét:** So với Mục 6.3 (`seed=13`, F1 = `0.9587`, AUC = `0.9913`), kết quả ở Bài 5 thấp hơn nhẹ do hai nguyên nhân: (1) sự thay đổi mẫu ngẫu nhiên khi chia tập test từ `seed=13` sang `seed=42` trên tập dữ liệu SMS kích thước nhỏ (~5.574 dòng), và (2) ở Bài 5, bước `IDF` nằm bên trong `sms_pipeline.fit(sms_train_b5)` nên hoàn toàn không bị rò rỉ thông tin từ tập test như ở Mục 6.2.
 
-### 4.5. Bài 6 & Bài 7 — So sánh Hồi quy `duration` và Phân tích Điều chuẩn (Cell 62)
+## 4.5. Bài 6 & Bài 7 — So sánh Hồi quy `duration` và Phân tích Điều chuẩn (Cell 62)
 - **Yêu cầu & Phương pháp:**
   - *Bài 6:* So sánh Model 1 (`duration ~ km`) và Model 2 (`duration ~ km + org_dummy`) trên cùng phép chia 80/20 với `seed=23`; giải thích hệ số hồi quy.
   - *Bài 7:* Huấn luyện Ridge (`elasticNetParam=0.0`), Elastic Net (`0.5`) và Lasso (`1.0`) với `regParam=0.1` trên `train_m2`, so sánh RMSE và đếm số hệ số gần 0 (`abs(w) < 1e-5`).
@@ -403,7 +411,7 @@ Bảng 3 trình bày 10 cấu hình đạt F1-Score cao nhất từ bảng `pdf_
   2. *Phân tích hiện tượng Elastic Net có 1 hệ số bằng 0 nhưng Lasso có 0 hệ số bằng 0:* Trong cả Cell 42 (ngưỡng `1e-10`) và Cell 62 (ngưỡng `1e-5`), Elastic Net (`alpha=0.5`) có `1` hệ số bằng 0, trong khi Lasso (`alpha=1.0`) lại ghi nhận `0`. Nguyên nhân là do vector `org_dummy` được tạo bởi `StringIndexer(handleInvalid="keep")` kết hợp `OneHotEncoder(dropLast=True)` trên tập dữ liệu có đúng 8 sân bay: 7 vị trí đầu tương ứng với 7 sân bay phổ biến nhất, còn vị trí thứ 8 ứng với sân bay ít phổ biến nhất (`TUS`), trong khi bucket dự phòng cho nhãn `invalid` bị cắt bởi `dropLast=True`. Khi giải bài toán tối ưu bằng thuật toán OWL-QN (Orthant-Wise Limited-memory Quasi-Newton) trong Spark cho chuẩn $L_1$, việc co ngót các hệ số dummy tương quan với hệ số chặn `intercept` phụ thuộc vào đường đi hội tụ số học: ở `alpha=0.5`, hệ số của một sân bay có thời gian lăn bánh trùng với mức nền bị đẩy hẳn về $0$, trong khi ở `alpha=1.0` (`regParam=0.1`), điểm dừng hội tụ dịch chuyển giá trị `intercept` và giữ các hệ số dummy khác $0$ một lượng lớn hơn $10^{-5}$.
   3. *Lưu ý về thiếu sót nhỏ trong Bài 7 và lỗi tiền xử lý trong Cell 62:* Đề bài Bài 7 (Mục 5 PDF) liệt kê so sánh 4 mô hình (Linear Regression, Ridge, Lasso, Elastic Net). Trong Cell 62, vòng lặp `reg_types` chạy 3 mô hình có điều chuẩn (Ridge, ElasticNet, Lasso), còn mô hình Linear Regression không điều chuẩn chính là `model_m2` đã được tính ngay phía trên trong cùng cell (`rmse_m2 = 11.2901`, cả 9 hệ số đều khác 0). Tuy nhiên, ở dòng `prepped_data_m2 = prep_pipe_m2.fit(reg_base_b6).transform(reg_base_b6)`, bộ tiền xử lý lại được `.fit()` trên toàn bộ dữ liệu trước khi gọi `randomSplit` — đây là điểm chưa chặt chẽ về mặt quy trình và được sửa triệt để ở Bài 8 & Bài 9.
 
-### 4.6. Bài 8 & Bài 9 — Kiến trúc Pipeline và Tinh chỉnh 3-Fold Cross-Validation (Cell 63)
+## 4.6. Bài 8 & Bài 9 — Kiến trúc Pipeline và Tinh chỉnh 3-Fold Cross-Validation (Cell 63)
 - **Giải thích Bài 8 (Tại sao bắt buộc phải `.fit()` Pipeline trên tập Training?):**
   Các `Estimator` tiền xử lý như `StringIndexer`, `OneHotEncoder`, `IDF`, hay `StandardScaler` đều trích xuất thống kê toàn cục từ dữ liệu đầu vào (như danh sách từ vựng, thứ tự tần suất nhãn, trung bình và độ lệch chuẩn). Nếu gọi `.fit()` trên toàn bộ dữ liệu trước khi chia Train/Test, phân bố của tập Test đã thẩm thấu vào cấu trúc đặc trưng của tập Train (**Data Leakage**). Đặc biệt khi thực hiện $K$-Fold Cross-Validation, nếu tiền xử lý nằm ngoài `Pipeline`, dữ liệu của fold kiểm định (validation fold) sẽ bị rò rỉ vào các fold huấn luyện. Đóng gói toàn bộ vào `Pipeline` đảm bảo trong mỗi fold của CV, Spark chỉ gọi `.fit()` trên $K-1$ fold huấn luyện và chỉ gọi `.transform()` trên fold kiểm định.
 - **Kết quả thực thi Bài 9 (Cell 63):**
@@ -411,7 +419,7 @@ Bảng 3 trình bày 10 cấu hình đạt F1-Score cao nhất từ bảng `pdf_
   - Chạy 3-Fold Cross-Validation (`numFolds=3`, `seed=42`, `parallelism=2`) trên tập `train_b9` (chia 80/20 với `seed=42`).
   - **Kết quả:** Cấu hình tối ưu tìm được hoàn toàn nhất quán với Mục 11: **`Best regParam = 0.01`** và **`Best elasticNetParam = 0.5`**, đạt **Best configuration test set RMSE = `11.2302` phút** trên `test_b9`.
 
-### 4.7. Bài 10 — So sánh Ensemble Classifiers trên dữ liệu chuyến bay (Cell 64)
+## 4.7. Bài 10 — So sánh Ensemble Classifiers trên dữ liệu chuyến bay (Cell 64)
 - **Yêu cầu & Phương pháp:** So sánh `DecisionTreeClassifier`, `RandomForestClassifier(numTrees=30)` và `GBTClassifier(maxIter=20)` với cùng `seed=42` trên tập `flights_ready_b2` (15 chiều đặc trưng, chia 80/20 với `seed=42`).
 - **Kết quả thực thi (Cell 64):**
   1. **Gradient-Boosted Trees (GBT):** **F1-Score = `0.664974`**, **AUC = `0.727417`** (Cao nhất).
@@ -419,9 +427,8 @@ Bảng 3 trình bày 10 cấu hình đạt F1-Score cao nhất từ bảng `pdf_
   3. **Decision Tree:** **F1-Score = `0.631709`**, **AUC = `0.598907`** (Thấp nhất về AUC).
 - **Kết luận:** Dựa trên cả hai tiêu chí AUC và F1-Score, **GBT** là mô hình chiến thắng tuyệt đối nhờ khả năng kết hợp tuần tự các cây quyết định để giảm độ chệch trên không gian đặc trưng hỗn hợp (thời gian + sân bay + hãng hàng không).
 
----
 
-## CHƯƠNG 5: TRẢ LỜI 12 CÂU HỎI ÔN TẬP (MỤC 6 ĐỀ BÀI & CELL 65–66)
+# CHƯƠNG 5: TRẢ LỜI 12 CÂU HỎI ÔN TẬP (MỤC 6 ĐỀ BÀI & CELL 65–66)
 
 Dưới đây là phần tổng hợp và chuẩn hóa 12 câu hỏi ôn tập lý thuyết gắn liền với kết quả thực nghiệm trong notebook:
 
