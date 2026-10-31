@@ -1,0 +1,9 @@
+File,Rows,Description
+sales_transactions_dirty.csv,180270,Raw transaction fact
+customers.csv,12000,Customer master
+products.csv,100,Product master
+FactSales.csv,179191,Sample cleaned fact
+DimDate.csv,1096,Date dimension
+DimCustomer.csv,12000,Customer dimension
+DimProduct.csv,100,Product dimension
+DimChannel.csv,4,Channel dimension

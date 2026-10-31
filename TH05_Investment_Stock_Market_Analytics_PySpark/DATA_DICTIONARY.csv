@@ -1,0 +1,9 @@
+﻿File,Field,Description
+stock_market_daily.csv,Date,Ngày giao dịch
+stock_market_daily.csv,Ticker,Mã cổ phiếu
+stock_market_daily.csv,Sector,Nhóm ngành
+stock_market_daily.csv,Open/High/Low/Close,Giá OHLC mô phỏng
+stock_market_daily.csv,Volume,Khối lượng giao dịch
+stock_market_daily.csv,SharesOutstanding_Bn,"Số cổ phiếu lưu hành, tỷ cổ phiếu"
+market_index.csv,MarketIndex,Chỉ số thị trường mô phỏng
+sample_portfolio.csv,Weight,Trọng số danh mục mẫu

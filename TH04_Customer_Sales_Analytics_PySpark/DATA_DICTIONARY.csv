@@ -1,0 +1,23 @@
+File,Column,Description
+transactions,TransactionID,Unique transaction line identifier
+transactions,OrderID,Order identifier
+transactions,Date,Transaction date
+transactions,CustomerID,Customer identifier
+transactions,ProductID,Product identifier
+transactions,Channel,Sales channel
+transactions,Quantity,Quantity purchased
+transactions,UnitPrice,Unit selling price
+transactions,Discount,Discount rate
+transactions,Revenue,Net revenue
+transactions,Cost,Estimated cost
+transactions,Profit,Revenue minus cost
+transactions,IsReturn,Return flag 0/1
+customers,CustomerID,Customer identifier
+customers,CustomerSegment,Consumer Corporate or SMB
+customers,Region,Customer region
+customers,SignupDate,Customer signup date
+products,ProductID,Product identifier
+products,ProductName,Product name
+products,Category,Product category
+products,UnitCost,Unit cost
+products,ListPrice,List price

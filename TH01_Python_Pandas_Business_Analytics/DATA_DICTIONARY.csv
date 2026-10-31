@@ -1,0 +1,14 @@
+Column,Description
+TransactionID,Mã giao d?ch
+TransactionDate,Ngày giao d?ch
+CustomerID,Mã khách hàng
+Region,Khu v?c
+Channel,Kênh bán hàng
+ProductID,Mã s?n ph?m
+Category,Nhóm s?n ph?m
+Quantity,??n giá
+UnitPrice,"T? l? gi?m giá, t? 0 ??n 1"
+Discount,Doanh thu sau gi?m giá
+Revenue,Doanh thu sau giáº£m giÃ¡
+Profit,L?i nhu?n
+Rating,?i?m ?ánh giá 1-5

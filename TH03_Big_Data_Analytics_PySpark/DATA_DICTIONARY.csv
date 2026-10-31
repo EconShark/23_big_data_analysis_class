@@ -1,0 +1,18 @@
+﻿File,Column,Description
+ecommerce_events_dirty.csv,EventID,Mã sự kiện duy nhất
+ecommerce_events_dirty.csv,EventTime,Thời điểm phát sinh sự kiện
+ecommerce_events_dirty.csv,CustomerID,Mã khách hàng
+ecommerce_events_dirty.csv,ProductID,Mã sản phẩm
+ecommerce_events_dirty.csv,Channel,Kênh Web/Mobile/Store
+ecommerce_events_dirty.csv,EventType,Loại sự kiện: view/add_to_cart/purchase/return
+ecommerce_events_dirty.csv,Quantity,"Số lượng, return có thể âm"
+ecommerce_events_dirty.csv,UnitPrice,Đơn giá
+ecommerce_events_dirty.csv,Discount,Tỷ lệ giảm giá
+ecommerce_events_dirty.csv,Amount,Giá trị giao dịch
+customers.csv,Region,Vùng khách hàng
+customers.csv,Age,Tuổi
+customers.csv,JoinDate,Ngày tham gia
+customers.csv,CustomerTier,Hạng khách hàng
+products.csv,Category,Nhóm sản phẩm
+products.csv,Brand,Nhãn hàng
+products.csv,BasePrice,Giá niêm yết mô phỏng
